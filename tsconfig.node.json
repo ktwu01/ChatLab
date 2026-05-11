@@ -11,7 +11,8 @@
     "packages/core/**/*",
     "packages/node-runtime/**/*",
     "packages/config/**/*",
-    "packages/server/**/*"
+    "packages/server/**/*",
+    "packages/tools/**/*"
   ],
   "compilerOptions": {
     "composite": true,
