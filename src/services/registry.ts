@@ -213,8 +213,14 @@ async function installAiApiShims(): Promise<void> {
       _cachedLlmData = null
       return httpPut(`/ai/llm/configs/${id}`, updates)
     },
-    validateApiKey: () => Promise.resolve(WEB_STUB),
-    fetchRemoteModels: () => Promise.resolve({ success: false, error: 'Not available in web mode', models: [] }),
+    validateApiKey: async (provider: string, apiKey: string, baseUrl?: string, model?: string) => {
+      const { post: httpPost } = await import('./utils/http')
+      return httpPost('/ai/llm/validate-key', { provider, apiKey, baseUrl, model })
+    },
+    fetchRemoteModels: async (provider: string, apiKey: string, baseUrl?: string, apiFormat?: string) => {
+      const { post: httpPost } = await import('./utils/http')
+      return httpPost('/ai/llm/remote-models', { provider, apiKey, baseUrl, apiFormat })
+    },
     chatStream: () => Promise.resolve({ success: false, error: 'Not available in web mode' }),
     addCustomModel: async (input: Record<string, unknown>) => {
       const { post: httpPost } = await import('./utils/http')

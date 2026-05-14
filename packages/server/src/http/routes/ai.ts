@@ -35,6 +35,7 @@ import {
   updateCustomModel,
   deleteCustomModel,
 } from '../../ai/custom-store'
+import { validateApiKey, fetchRemoteModels } from '../../ai/remote-api'
 
 function getAiDir(dbManager: DatabaseManager): string {
   const pathProvider = (dbManager as any)['pathProvider']
@@ -373,6 +374,22 @@ export function registerAiRoutes(
   }>('/_web/ai/llm/custom-models/:providerId/:modelId', async (request) => {
     const aiDataDir = getAiDir(dbManager)
     return deleteCustomModel(aiDataDir, request.params.providerId, request.params.modelId)
+  })
+
+  // ==================== Remote API (Validate Key & Fetch Models) ====================
+
+  server.post<{
+    Body: { provider: string; apiKey: string; baseUrl?: string; model?: string; apiFormat?: string }
+  }>('/_web/ai/llm/validate-key', async (request) => {
+    const { provider, apiKey, baseUrl, model, apiFormat } = request.body
+    return validateApiKey(provider, apiKey, baseUrl, model, apiFormat)
+  })
+
+  server.post<{
+    Body: { provider: string; apiKey: string; baseUrl?: string; apiFormat?: string }
+  }>('/_web/ai/llm/remote-models', async (request) => {
+    const { provider, apiKey, baseUrl, apiFormat } = request.body
+    return fetchRemoteModels(provider, apiKey, baseUrl, apiFormat)
   })
 
   // ==================== Tool Catalog ====================
