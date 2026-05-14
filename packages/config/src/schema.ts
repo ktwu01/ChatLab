@@ -8,7 +8,6 @@ import { z } from 'zod'
 
 export const llmConfigSchema = z.object({
   provider: z.string().default(''),
-  api_key: z.string().default(''),
   model: z.string().default(''),
   base_url: z.string().default(''),
 })

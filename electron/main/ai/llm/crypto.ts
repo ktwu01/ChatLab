@@ -5,7 +5,7 @@
 
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'crypto'
 import { execSync } from 'child_process'
-import { getDeviceKey } from './device-key'
+import { getDeviceKey, getAllDeviceKeys } from './device-key'
 
 // 加密算法
 const ALGORITHM = 'aes-256-gcm'
@@ -148,24 +148,25 @@ function tryDecryptWithKey(encrypted: string, key: Buffer): string | null {
 export function decryptApiKey(encrypted: string): string {
   if (!encrypted) return ''
 
-  // 如果不是加密格式，直接返回（兼容旧的明文数据）
   if (!isEncrypted(encrypted)) {
     return encrypted
   }
 
-  // 尝试当前密钥
-  const currentKey = getKey()
-  const result = tryDecryptWithKey(encrypted, currentKey)
-  if (result !== null) return result
+  // 1. 尝试所有 device key 文件（当前 + Electron legacy 位置）
+  const allDeviceKeys = getAllDeviceKeys()
+  for (const dk of allDeviceKeys) {
+    const derived = createHash('sha256')
+      .update(dk + SALT)
+      .digest()
+    const result = tryDecryptWithKey(encrypted, derived)
+    if (result !== null) return result
+  }
 
-  // 当前密钥失败，尝试旧版 machine-id 密钥（迁移场景）
+  // 2. 尝试旧版 machine-id 密钥
   const legacyKeys = deriveLegacyKeys()
   for (const legacyKey of legacyKeys) {
     const legacyResult = tryDecryptWithKey(encrypted, legacyKey)
-    if (legacyResult !== null) {
-      console.log('[Crypto] Decrypted with legacy key, migration needed')
-      return legacyResult
-    }
+    if (legacyResult !== null) return legacyResult
   }
 
   console.error('[Crypto] Failed to decrypt API Key with all available keys')

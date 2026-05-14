@@ -12,10 +12,14 @@
 import * as fs from 'fs'
 import * as path from 'path'
 import type { FastifyInstance } from 'fastify'
-import type { DatabaseManager } from '@openchatlab/node-runtime'
+import type { DatabaseManager, AIConversationManager } from '@openchatlab/node-runtime'
 import { parseAssistantFile, parseSkillFile } from '@openchatlab/node-runtime'
 import { BUILTIN_TOOL_CATALOG, BUILTIN_PROVIDERS, BUILTIN_MODELS, getBuiltinModelsByProvider } from '@openchatlab/core'
 import type { AssistantSummary, SkillSummary } from '@openchatlab/node-runtime'
+import { TOOL_REGISTRY } from '@openchatlab/tools'
+import { adaptToolsForAgent } from '../../ai/tool-adapter'
+import { loadAssistantConfig } from '../../ai/assistant-loader'
+import { runServerAgent, type AgentStreamEvent } from '../../ai/agent'
 
 function getAiDir(dbManager: DatabaseManager): string {
   const pathProvider = (dbManager as any)['pathProvider']
@@ -33,7 +37,11 @@ function scanMdFiles(dir: string): string[] {
     .map((f) => path.join(dir, f))
 }
 
-export function registerAiRoutes(server: FastifyInstance, dbManager: DatabaseManager): void {
+export function registerAiRoutes(
+  server: FastifyInstance,
+  dbManager: DatabaseManager,
+  convManager?: AIConversationManager
+): void {
   // ==================== Assistants ====================
 
   server.get('/_web/ai/assistants', async () => {
@@ -229,5 +237,176 @@ export function registerAiRoutes(server: FastifyInstance, dbManager: DatabaseMan
 
   server.get('/_web/ai/tools/catalog', async () => {
     return BUILTIN_TOOL_CATALOG
+  })
+
+  // ==================== AI Conversations CRUD ====================
+
+  if (!convManager) return
+
+  server.post<{
+    Body: { sessionId: string; title?: string; assistantId: string }
+  }>('/_web/ai/conversations', async (request) => {
+    const { sessionId, title, assistantId } = request.body
+    return convManager.createConversation(sessionId, title, assistantId)
+  })
+
+  server.get<{
+    Querystring: { sessionId: string }
+  }>('/_web/ai/conversations', async (request) => {
+    const { sessionId } = request.query
+    if (!sessionId) return []
+    return convManager.getConversations(sessionId)
+  })
+
+  server.get<{ Params: { id: string } }>('/_web/ai/conversations/:id', async (request, reply) => {
+    const conv = convManager.getConversation(request.params.id)
+    if (!conv) return reply.code(404).send({ error: 'Conversation not found' })
+    return conv
+  })
+
+  server.put<{
+    Params: { id: string }
+    Body: { title: string }
+  }>('/_web/ai/conversations/:id/title', async (request) => {
+    return convManager.updateConversationTitle(request.params.id, request.body.title)
+  })
+
+  server.delete<{ Params: { id: string } }>('/_web/ai/conversations/:id', async (request) => {
+    return convManager.deleteConversation(request.params.id)
+  })
+
+  // ==================== AI Messages CRUD ====================
+
+  server.post<{
+    Params: { id: string }
+    Body: {
+      role: 'user' | 'assistant' | 'summary'
+      content: string
+      dataKeywords?: string[]
+      dataMessageCount?: number
+      contentBlocks?: unknown[]
+      tokenUsage?: { promptTokens: number; completionTokens: number; totalTokens: number }
+    }
+  }>('/_web/ai/conversations/:id/messages', async (request) => {
+    const { role, content, dataKeywords, dataMessageCount, contentBlocks, tokenUsage } = request.body
+    return convManager.addMessage(
+      request.params.id,
+      role,
+      content,
+      dataKeywords,
+      dataMessageCount,
+      contentBlocks as any,
+      tokenUsage
+    )
+  })
+
+  server.get<{ Params: { id: string } }>('/_web/ai/conversations/:id/messages', async (request) => {
+    return convManager.getMessages(request.params.id)
+  })
+
+  server.get<{ Params: { id: string } }>('/_web/ai/conversations/:id/token-usage', async (request) => {
+    return convManager.getConversationTokenUsage(request.params.id)
+  })
+
+  // ==================== Agent SSE Stream ====================
+
+  const activeAgentAborts = new Map<string, AbortController>()
+
+  server.post<{
+    Body: {
+      userMessage: string
+      conversationId: string
+      sessionId: string
+      chatType?: 'group' | 'private'
+      locale?: string
+      assistantId?: string
+    }
+  }>('/_web/ai/agent/stream', async (request, reply) => {
+    const { userMessage, conversationId, sessionId, chatType, locale, assistantId } = request.body
+
+    const requestId = `req_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+    const abortController = new AbortController()
+    activeAgentAborts.set(requestId, abortController)
+
+    reply.raw.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
+      'X-Request-Id': requestId,
+    })
+
+    const sendSSE = (event: string, data: unknown) => {
+      reply.raw.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
+    }
+
+    sendSSE('meta', { requestId })
+
+    const aiDataDir = getAiDir(dbManager)
+
+    let assistantSystemPrompt: string | undefined
+    if (assistantId) {
+      const assistantConfig = loadAssistantConfig(aiDataDir, assistantId)
+      if (assistantConfig?.systemPrompt) {
+        assistantSystemPrompt = assistantConfig.systemPrompt
+      }
+    }
+
+    const db = (dbManager as any).open?.(sessionId)
+    const agentTools = db
+      ? adaptToolsForAgent(TOOL_REGISTRY, () => ({
+          db,
+          sessionId,
+          locale,
+        }))
+      : []
+
+    const onEvent = (event: AgentStreamEvent) => {
+      sendSSE(event.type, event)
+      if (event.type === 'done') {
+        activeAgentAborts.delete(requestId)
+        reply.raw.end()
+      }
+    }
+
+    reply.raw.on('close', () => {
+      if (!abortController.signal.aborted) {
+        abortController.abort()
+      }
+      activeAgentAborts.delete(requestId)
+    })
+
+    try {
+      await runServerAgent({
+        userMessage,
+        conversationId,
+        chatType,
+        locale,
+        assistantSystemPrompt,
+        tools: agentTools,
+        aiDataDir,
+        convManager,
+        onEvent,
+        abortSignal: abortController.signal,
+      })
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error)
+      sendSSE('error', { type: 'error', error: { name: 'ServerError', message: msg } })
+      sendSSE('done', { type: 'done', isFinished: true })
+      activeAgentAborts.delete(requestId)
+      reply.raw.end()
+    }
+  })
+
+  server.post<{
+    Body: { requestId: string }
+  }>('/_web/ai/agent/abort', async (request) => {
+    const { requestId } = request.body
+    const controller = activeAgentAborts.get(requestId)
+    if (controller) {
+      controller.abort()
+      activeAgentAborts.delete(requestId)
+      return { success: true }
+    }
+    return { success: false }
   })
 }

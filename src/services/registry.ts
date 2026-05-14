@@ -95,8 +95,8 @@ async function initWebServeAdapters(): Promise<void> {
   const { WebPlatformAdapter } = await import('./platform/web')
   registerAdapter('platform', new WebPlatformAdapter())
 
-  const { WebAIAdapter } = await import('./ai/web')
-  registerAdapter('ai', new WebAIAdapter())
+  const { FetchAIAdapter } = await import('./ai/fetch')
+  registerAdapter('ai', new FetchAIAdapter())
 
   await installChartPluginShims()
   await installNlpApiShim()
@@ -199,13 +199,135 @@ async function installAiApiShims(): Promise<void> {
     updateCustomModel: () => Promise.resolve(WEB_STUB),
     deleteCustomModel: () => Promise.resolve(WEB_STUB),
   }
-  ;(window as any).agentApi = {
-    runStream: () => ({
-      requestId: '',
-      promise: Promise.resolve({ success: false, error: 'Not available in web mode' }),
-    }),
-    abort: () => Promise.resolve(),
+  const { fetchSSE } = await import('./utils/sse')
+  const { post: httpPost } = await import('./utils/http')
+
+  const agentApiImpl = {
+    runStream: (
+      userMessage: string,
+      context: Record<string, unknown>,
+      onChunk?: (chunk: Record<string, unknown>) => void,
+      chatType?: string,
+      locale?: string,
+      assistantId?: string,
+      _skillId?: string | null,
+      _enableAutoSkill?: boolean,
+      _compressionConfig?: Record<string, unknown>
+    ): {
+      requestId: string
+      promise: Promise<{ success: boolean; result?: Record<string, unknown>; error?: Record<string, unknown> }>
+    } => {
+      const localRequestId = `agent_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+      let serverRequestId = localRequestId
+      const abortController = new AbortController()
+
+      const promise = new Promise<{
+        success: boolean
+        result?: Record<string, unknown>
+        error?: Record<string, unknown>
+      }>((resolve) => {
+        let content = ''
+        const toolsUsed: string[] = []
+        let toolRounds = 0
+        let lastUsage: Record<string, unknown> | undefined
+        let hasError = false
+        let streamError: Record<string, unknown> | undefined
+
+        fetchSSE({
+          url: '/_web/ai/agent/stream',
+          method: 'POST',
+          body: {
+            userMessage,
+            conversationId: context.conversationId,
+            sessionId: context.sessionId,
+            chatType: chatType || 'group',
+            locale: locale || 'zh-CN',
+            assistantId,
+          },
+          signal: abortController.signal,
+          onEvent: ({ event, data }) => {
+            try {
+              const parsed = JSON.parse(data)
+
+              if (event === 'meta') {
+                serverRequestId = parsed.requestId || localRequestId
+                return
+              }
+
+              if (onChunk) onChunk(parsed)
+
+              switch (event) {
+                case 'content':
+                  if (parsed.content) content += parsed.content
+                  break
+                case 'tool_start':
+                  if (parsed.toolName) toolsUsed.push(parsed.toolName)
+                  break
+                case 'tool_result':
+                  break
+                case 'status':
+                  if (parsed.status?.round !== undefined) toolRounds = parsed.status.round
+                  break
+                case 'error':
+                  hasError = true
+                  streamError = parsed.error
+                  break
+                case 'done':
+                  if (parsed.usage) lastUsage = parsed.usage
+                  break
+              }
+            } catch {
+              // skip malformed
+            }
+          },
+        })
+          .then(() => {
+            if (hasError) {
+              resolve({ success: false, error: streamError })
+            } else {
+              resolve({
+                success: true,
+                result: { content, toolsUsed, toolRounds, totalUsage: lastUsage },
+              })
+            }
+          })
+          .catch((err) => {
+            if (abortController.signal.aborted) {
+              resolve({ success: false, error: { name: 'AbortError', message: 'Aborted' } })
+            } else {
+              resolve({ success: false, error: { name: 'NetworkError', message: err?.message || String(err) } })
+            }
+          })
+      })
+
+      // Store abort controller for external abort
+      ;(agentApiImpl as any)._abortControllers = (agentApiImpl as any)._abortControllers || new Map()
+      ;(agentApiImpl as any)._abortControllers.set(localRequestId, {
+        abortController,
+        serverRequestId: () => serverRequestId,
+      })
+
+      return { requestId: localRequestId, promise }
+    },
+
+    abort: async (requestId: string) => {
+      const controllers = (agentApiImpl as any)._abortControllers as
+        | Map<string, { abortController: AbortController; serverRequestId: () => string }>
+        | undefined
+      const entry = controllers?.get(requestId)
+      if (entry) {
+        entry.abortController.abort()
+        controllers!.delete(requestId)
+        try {
+          await httpPost('/ai/agent/abort', { requestId: entry.serverRequestId() })
+        } catch {
+          // best-effort
+        }
+      }
+    },
   }
+
+  ;(window as any).agentApi = agentApiImpl
 }
 
 async function initWebBrowserAdapters(): Promise<void> {

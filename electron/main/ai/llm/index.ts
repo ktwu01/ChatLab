@@ -10,7 +10,8 @@ import { getAiDataDir } from '../../paths'
 import type { LLMProvider, ProviderInfo, AIServiceConfig, AIConfigStore } from './types'
 import { MAX_CONFIG_COUNT } from './types'
 import { aiLogger } from '../logger'
-import { encryptApiKey, decryptApiKey, isEncrypted } from './crypto'
+import { decryptApiKey, isEncrypted } from './crypto'
+import { resolveApiKey, writeAuthProfile } from '@openchatlab/config'
 import { buildChatLabUserAgentHeaders } from '../../utils/httpHeaders'
 import { t } from '../../i18n'
 import { completeSimple, type Model as PiModel, type Api as PiApi } from '@mariozechner/pi-ai'
@@ -271,32 +272,48 @@ export function loadConfigStore(): AIConfigStore {
       needsSchemaSave = true
     }
 
-    let needsEncryptionMigration = false
-    const decryptedConfigs = store.configs.map((config) => {
-      if (config.apiKey && !isEncrypted(config.apiKey)) {
-        needsEncryptionMigration = true
-        aiLogger.info('LLM', `Config "${config.name}" API Key needs encryption migration`)
+    let needsMigrationSave = false
+    const resolvedConfigs = store.configs.map((config) => {
+      // 一次性迁移：旧加密 Key → auth-profiles.json
+      if (config.apiKey && isEncrypted(config.apiKey)) {
+        const plainKey = decryptApiKey(config.apiKey)
+        if (plainKey) {
+          const profileName = config.name?.toLowerCase().replace(/\s+/g, '-') || config.provider
+          writeAuthProfile(profileName, {
+            type: 'api_key',
+            provider: config.provider,
+            key: plainKey,
+          })
+          aiLogger.info('LLM', `Migrated API Key for "${config.name}" to auth-profiles.json`)
+          needsMigrationSave = true
+          return { ...config, apiKey: plainKey }
+        }
+        aiLogger.warn('LLM', `Failed to decrypt API Key for "${config.name}", skipping migration`)
+        return { ...config, apiKey: '' }
       }
-      return {
-        ...config,
-        apiKey: config.apiKey ? decryptApiKey(config.apiKey) : '',
-      }
+
+      // 正常流程：从 auth-profiles.json 读取
+      const profileKey = resolveApiKey(
+        config.provider,
+        (config as Record<string, unknown>).authProfile as string | undefined
+      )
+      return { ...config, apiKey: profileKey || config.apiKey || '' }
     })
 
-    if (needsEncryptionMigration || needsSchemaSave) {
-      aiLogger.info('LLM', 'Saving migrated config store')
+    if (needsMigrationSave || needsSchemaSave) {
+      aiLogger.info('LLM', 'Saving migrated config store (removing encrypted keys)')
       saveConfigStoreRaw({
         ...store,
         configs: store.configs.map((config) => ({
           ...config,
-          apiKey: config.apiKey ? encryptApiKey(decryptApiKey(config.apiKey)) : '',
+          apiKey: '',
         })),
       })
     }
 
     return {
       ...store,
-      configs: decryptedConfigs,
+      configs: resolvedConfigs,
     }
   } catch (error) {
     aiLogger.error('LLM', 'Failed to load configs', error)
@@ -305,17 +322,17 @@ export function loadConfigStore(): AIConfigStore {
 }
 
 /**
- * 保存配置存储（自动加密 API Key）
+ * 保存配置存储
+ * API Key 不再存储在 llm-config.json 中，统一由 auth-profiles.json 管理
  */
 export function saveConfigStore(store: AIConfigStore): void {
-  const encryptedStore: AIConfigStore = {
+  saveConfigStoreRaw({
     ...store,
     configs: store.configs.map((config) => ({
       ...config,
-      apiKey: config.apiKey ? encryptApiKey(config.apiKey) : '',
+      apiKey: '',
     })),
-  }
-  saveConfigStoreRaw(encryptedStore)
+  })
 }
 
 function saveConfigStoreRaw(store: AIConfigStore): void {
@@ -399,6 +416,15 @@ export function addConfig(config: Omit<AIServiceConfig, 'id' | 'createdAt' | 'up
     store.defaultAssistant = { configId: newConfig.id, modelId: newConfig.model || '' }
   }
 
+  if (newConfig.apiKey) {
+    const profileName = newConfig.name?.toLowerCase().replace(/\s+/g, '-') || newConfig.provider
+    writeAuthProfile(profileName, {
+      type: 'api_key',
+      provider: newConfig.provider,
+      key: newConfig.apiKey,
+    })
+  }
+
   saveConfigStore(store)
   return { success: true, config: newConfig }
 }
@@ -414,10 +440,20 @@ export function updateConfig(
     return { success: false, error: t('llm.configNotFound') }
   }
 
-  store.configs[index] = {
+  const updated = {
     ...store.configs[index],
     ...updates,
     updatedAt: Date.now(),
+  }
+  store.configs[index] = updated
+
+  if (updates.apiKey) {
+    const profileName = updated.name?.toLowerCase().replace(/\s+/g, '-') || updated.provider
+    writeAuthProfile(profileName, {
+      type: 'api_key',
+      provider: updated.provider,
+      key: updates.apiKey,
+    })
   }
 
   saveConfigStore(store)

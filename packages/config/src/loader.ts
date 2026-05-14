@@ -77,7 +77,6 @@ function loadConfigFile(): Record<string, unknown> {
  * - CHATLAB_API_PORT       -> api.port
  * - CHATLAB_API_HOST       -> api.host
  * - CHATLAB_LLM_PROVIDER   -> llm.provider
- * - CHATLAB_LLM_API_KEY    -> llm.api_key
  * - CHATLAB_LLM_MODEL      -> llm.model
  * - CHATLAB_LLM_BASE_URL   -> llm.base_url
  * - CHATLAB_LOCALE_LANG    -> locale.lang
@@ -90,7 +89,6 @@ function loadEnvConfig(): Record<string, unknown> {
     { env: 'CHATLAB_API_PORT', section: 'api', key: 'port', transform: (v) => parseInt(v, 10) },
     { env: 'CHATLAB_API_HOST', section: 'api', key: 'host' },
     { env: 'CHATLAB_LLM_PROVIDER', section: 'llm', key: 'provider' },
-    { env: 'CHATLAB_LLM_API_KEY', section: 'llm', key: 'api_key' },
     { env: 'CHATLAB_LLM_MODEL', section: 'llm', key: 'model' },
     { env: 'CHATLAB_LLM_BASE_URL', section: 'llm', key: 'base_url' },
     { env: 'CHATLAB_LOCALE_LANG', section: 'locale', key: 'lang' },

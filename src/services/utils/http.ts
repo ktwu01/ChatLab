@@ -37,6 +37,19 @@ export async function del<T = boolean>(path: string): Promise<T> {
   return resp.json() as Promise<T>
 }
 
+export async function put<T>(path: string, body?: unknown): Promise<T> {
+  const resp = await fetch(`${BASE}${path}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: body != null ? JSON.stringify(body) : undefined,
+  })
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => '')
+    throw new Error(`HTTP ${resp.status}: ${text}`)
+  }
+  return resp.json() as Promise<T>
+}
+
 export async function patch<T>(path: string, body?: unknown): Promise<T> {
   const resp = await fetch(`${BASE}${path}`, {
     method: 'PATCH',

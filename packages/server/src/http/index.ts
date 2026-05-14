@@ -11,7 +11,7 @@ import * as crypto from 'crypto'
 import type { FastifyInstance } from 'fastify'
 import { loadConfig, getConfigDir } from '@openchatlab/config'
 import type { ChatLabConfig } from '@openchatlab/config'
-import { NodePathProvider, DatabaseManager } from '@openchatlab/node-runtime'
+import { NodePathProvider, DatabaseManager, AIConversationManager } from '@openchatlab/node-runtime'
 import { createServer } from './server'
 import { setAuthToken } from './auth'
 import { registerSystemRoutes } from './routes/system'
@@ -22,6 +22,7 @@ import { registerAiRoutes } from './routes/ai'
 
 let server: FastifyInstance | null = null
 let dbManager: DatabaseManager | null = null
+let convManager: AIConversationManager | null = null
 
 export interface HttpServerOptions {
   port?: number
@@ -84,6 +85,7 @@ export async function startHttpServer(options?: HttpServerOptions): Promise<{
   pathProvider.ensureAllDirs()
   const nativeBinding = resolveNativeBinding()
   dbManager = new DatabaseManager(pathProvider, { nativeBinding })
+  convManager = new AIConversationManager(pathProvider.getAiDataDir(), { nativeBinding })
 
   setAuthToken(token)
 
@@ -97,7 +99,7 @@ export async function startHttpServer(options?: HttpServerOptions): Promise<{
   registerSystemRoutes(server, dbManager)
   registerSessionRoutes(server, dbManager)
   registerNlpRoutes(server, dbManager)
-  registerAiRoutes(server, dbManager)
+  registerAiRoutes(server, dbManager, convManager)
   registerWebRoutes(server, dbManager)
 
   // 托管 Web SPA 静态资源
@@ -128,6 +130,10 @@ export async function stopHttpServer(): Promise<void> {
   try {
     await server.close()
   } finally {
+    if (convManager) {
+      convManager.close()
+      convManager = null
+    }
     if (dbManager) {
       dbManager.closeAll()
       dbManager = null

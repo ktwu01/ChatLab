@@ -30,6 +30,15 @@ export {
   ensureDefaultDict,
 } from './nlp'
 
-// AI 助手/技能解析器
+// AI 助手/技能解析器 + 对话管理
 export type { AssistantConfig, AssistantSummary, SkillDef, SkillSummary } from './ai'
 export { parseAssistantFile, serializeAssistant, parseSkillFile, extractSkillId } from './ai'
+export { AIConversationManager } from './ai'
+export type {
+  AIConversation,
+  AIMessage,
+  AIMessageRole,
+  ContentBlock,
+  TokenUsageData,
+  ConversationManagerLogger,
+} from './ai'
