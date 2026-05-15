@@ -76,7 +76,7 @@ export function registerAutomationRoutes(server: FastifyInstance, ctx: SyncRoute
     if (added.length === 0 && !dsManager.get(request.params.id)) {
       return reply.code(404).send({ error: 'Data source not found' })
     }
-    reloadTimer(request.params.id)
+    reloadTimer(request.params.id, true)
     return added
   })
 

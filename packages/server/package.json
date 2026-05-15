@@ -23,6 +23,7 @@
     "@openchatlab/node-runtime": "workspace:*",
     "@openchatlab/parser": "workspace:*",
     "@openchatlab/shared-types": "workspace:*",
+    "@openchatlab/sync": "workspace:*",
     "@openchatlab/tools": "workspace:*",
     "commander": "^13.1.0",
     "fastify": "^5.8.4"

@@ -177,7 +177,7 @@ export function registerApiHandlers(_ctx: IpcContext): void {
     'api:addImportSessions',
     (_event, sourceId: string, sessions: Array<{ name: string; remoteSessionId: string }>) => {
       const added = dsManager.addSessions(sourceId, sessions)
-      reloadTimer(sourceId)
+      reloadTimer(sourceId, true)
       return added
     }
   )

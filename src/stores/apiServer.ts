@@ -379,7 +379,11 @@ export const useApiServerStore = defineStore('apiServer', () => {
   async function addImportSessions(sourceId: string, sessions: Array<{ name: string; remoteSessionId: string }>) {
     try {
       const added = await transport.addImportSessions(sourceId, sessions)
-      await fetchDataSources()
+      if (added.length > 0) {
+        await triggerPullAll(sourceId)
+      } else {
+        await fetchDataSources()
+      }
       return added
     } catch (err) {
       console.error('[ApiServerStore] Failed to add import sessions:', err)

@@ -20,7 +20,7 @@ const MSG_SELECT = `
     COALESCE(m.group_nickname, m.account_name, m.platform_id) as senderName,
     m.platform_id as senderPlatformId,
     m.aliases,
-    m.avatar,
+    m.avatar as senderAvatar,
     msg.content,
     msg.ts as timestamp,
     msg.type,

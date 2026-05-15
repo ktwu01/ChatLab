@@ -23,15 +23,17 @@ let _dsManager: DataSourceManager
 let _pullEngine: PullEngine
 let _logger: SyncLogger
 
-function startTimer(ds: DataSource): void {
+function startTimer(ds: DataSource, skipInitialPull = false): void {
   stopTimer(ds.id)
   if (!ds.enabled || ds.intervalMinutes < 1 || ds.sessions.length === 0) return
 
   const intervalMs = ds.intervalMinutes * 60 * 1000
 
-  _pullEngine.pullAllSessions(ds).catch((err) => {
-    _logger.error('[Pull] Initial pull failed', err)
-  })
+  if (!skipInitialPull) {
+    _pullEngine.pullAllSessions(ds).catch((err) => {
+      _logger.error('[Pull] Initial pull failed', err)
+    })
+  }
 
   const timer = setInterval(() => {
     const current = _dsManager.loadAll().find((s) => s.id === ds.id)
@@ -84,10 +86,10 @@ export function stopAllTimers(): void {
   _logger?.info('[Pull] All timers stopped')
 }
 
-export function reloadTimer(dsId: string): void {
+export function reloadTimer(dsId: string, skipInitialPull = false): void {
   stopTimer(dsId)
   const ds = _dsManager?.loadAll().find((s) => s.id === dsId)
   if (ds && ds.enabled) {
-    startTimer(ds)
+    startTimer(ds, skipInitialPull)
   }
 }
