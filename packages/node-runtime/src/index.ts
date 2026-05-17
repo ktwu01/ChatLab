@@ -57,6 +57,16 @@ export { checkAndCompress, manualCompress } from './ai'
 
 // SkillManager
 export { SkillManager } from './ai'
+
+// SkillManagerCore
+export { SkillManagerCore } from './ai'
+export type {
+  SkillInitResult,
+  SkillManagerSaveResult,
+  BuiltinSkillInfo,
+  SkillManagerFs,
+  SkillManagerCoreDeps,
+} from './ai'
 export type { SkillManagerLogger, ActivateSkillToolOptions, ActivateSkillTool, ActivateSkillToolResult } from './ai'
 export { createActivateSkillTool } from './ai'
 

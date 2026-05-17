@@ -33,8 +33,18 @@ export type {
 // Tokenizer
 export { countTokens, countMessagesTokens } from './tokenizer'
 
-// SkillManager
+// SkillManager (runtime: activate-skill tool builder)
 export { SkillManager } from './skill-manager'
+
+// SkillManagerCore (CRUD, shared)
+export { SkillManagerCore } from './skill-manager-core'
+export type {
+  SkillInitResult,
+  SkillSaveResult as SkillManagerSaveResult,
+  BuiltinSkillInfo,
+  SkillManagerFs,
+  SkillManagerCoreDeps,
+} from './skill-manager-core'
 export type { SkillManagerLogger } from './skill-manager'
 export { createActivateSkillTool } from './activate-skill-tool'
 export type { ActivateSkillToolOptions, ActivateSkillTool, ActivateSkillToolResult } from './activate-skill-tool'
