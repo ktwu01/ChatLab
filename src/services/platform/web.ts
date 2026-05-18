@@ -6,9 +6,11 @@
 
 import type { PlatformAdapter, OpenDialogOptions, OpenDialogResult, RemoteConfigResult } from './types'
 
+declare const __APP_VERSION__: string
+
 export class WebPlatformAdapter implements PlatformAdapter {
   async getVersion(): Promise<string> {
-    return 'web'
+    return typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'web'
   }
 
   async fetchRemoteConfig(url: string): Promise<RemoteConfigResult> {

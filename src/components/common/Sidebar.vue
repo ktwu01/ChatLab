@@ -71,13 +71,13 @@ let unlistenImportCompleted: (() => void) | null = null
 
 onMounted(async () => {
   sessionStore.loadSessions()
-  if (IS_ELECTRON) {
-    try {
-      version.value = await usePlatformService().getVersion()
-    } catch (e) {
-      console.error('Failed to get version', e)
-    }
+  try {
+    version.value = await usePlatformService().getVersion()
+  } catch (e) {
+    console.error('Failed to get version', e)
+  }
 
+  if (IS_ELECTRON) {
     unlistenImportCompleted = window.apiServerApi.onImportCompleted(() => {
       sessionStore.loadSessions()
     })

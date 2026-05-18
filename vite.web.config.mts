@@ -11,6 +11,7 @@
  */
 
 import { resolve } from 'path'
+import { readFileSync } from 'fs'
 import { spawn, type ChildProcess } from 'child_process'
 import * as net from 'net'
 import { defineConfig, type Plugin } from 'vite'
@@ -112,6 +113,7 @@ export default defineConfig({
   define: {
     __IS_ELECTRON__: JSON.stringify(false),
     __IS_BROWSER_STANDALONE__: JSON.stringify(false),
+    __APP_VERSION__: JSON.stringify(JSON.parse(readFileSync(resolve(__dirname, 'package.json'), 'utf-8')).version),
   },
   plugins: [
     vue(),
