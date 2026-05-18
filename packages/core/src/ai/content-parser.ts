@@ -30,3 +30,25 @@ export function extractThinkingContent(content: string): { thinking: string; cle
 export function stripToolCallTags(content: string): string {
   return content.replace(/<tool_call>[\s\S]*?<\/tool_call>/gi, '').trim()
 }
+
+/**
+ * Recursively strip large avatar/senderAvatar base64 strings from objects.
+ * Used when serializing tool results to avoid transmitting large image data.
+ */
+export function stripAvatarFields(obj: unknown): void {
+  if (!obj || typeof obj !== 'object') return
+  if (Array.isArray(obj)) {
+    for (const item of obj) stripAvatarFields(item)
+    return
+  }
+  const record = obj as Record<string, unknown>
+  for (const key of Object.keys(record)) {
+    if ((key === 'avatar' || key === 'senderAvatar') && typeof record[key] === 'string') {
+      if ((record[key] as string).length > 200) {
+        record[key] = '[stripped]'
+      }
+    } else if (typeof record[key] === 'object' && record[key] !== null) {
+      stripAvatarFields(record[key])
+    }
+  }
+}

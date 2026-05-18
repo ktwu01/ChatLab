@@ -3,23 +3,21 @@
  *
  * Thin wrapper that delegates to shared async query functions from @openchatlab/core.
  * The better-sqlite3 sync calls are wrapped as an AsyncSqlExecutor.
- * FTS search remains Electron-specific (depends on @node-rs/jieba tokenizer).
+ * FTS tokenization depends on @node-rs/jieba (platform-specific);
+ * the SQL query itself is shared via core's searchMessagesWithFtsAsync.
  */
 
-import { openDatabase, buildTimeFilter, type TimeFilter } from '../core'
+import { openDatabase, type TimeFilter } from '../core'
 import { ensureAvatarColumn } from './basic'
 import { hasFtsIndex } from './fts'
 import { tokenizeQueryForFts } from '@openchatlab/node-runtime'
 import {
-  FULL_MSG_SELECT,
-  FULL_MSG_FROM,
-  mapMessageRow,
-  type FullMessageRow,
   type MappedMessage,
   type AsyncSqlExecutor,
   fetchMessagesBefore,
   fetchMessagesAfter,
   searchMessagesLikeAsync,
+  searchMessagesWithFtsAsync,
   fetchMessageContext,
   fetchSearchMessageContext,
   fetchAllRecentMessages,
@@ -99,9 +97,8 @@ export async function searchMessages(
   senderId?: number
 ): Promise<MessagesWithTotal> {
   ensureAvatarColumn(sessionId)
-
-  const db = openDatabase(sessionId)
-  if (!db) return { messages: [], total: 0 }
+  const executor = createSyncExecutor(sessionId)
+  if (!executor) return { messages: [], total: 0 }
 
   const useFts = keywords.length > 0 && hasFtsIndex(sessionId)
   let matchQuery = ''
@@ -110,105 +107,14 @@ export async function searchMessages(
   }
 
   if (useFts && matchQuery) {
-    return searchMessagesWithFts(db, sessionId, matchQuery, filter, limit, offset, senderId)
+    try {
+      return await searchMessagesWithFtsAsync(executor, matchQuery, filter, limit, offset, senderId)
+    } catch (error) {
+      console.error('[FTS] searchMessages FTS path failed, falling back to LIKE:', error)
+    }
   }
 
-  const executor = createSyncExecutor(sessionId)!
   return searchMessagesLikeAsync(executor, keywords, filter, limit, offset, senderId)
-}
-
-/**
- * FTS5 search path (Electron-specific, depends on platform tokenizer).
- */
-function searchMessagesWithFts(
-  db: ReturnType<typeof openDatabase> & object,
-  _sessionId: string,
-  matchQuery: string,
-  filter?: TimeFilter,
-  limit: number = 20,
-  offset: number = 0,
-  senderId?: number
-): MessagesWithTotal {
-  const { clause: timeClause, params: timeParams } = buildTimeFilter(filter, 'msg')
-  const timeCondition = timeClause ? timeClause.replace('WHERE', 'AND') : ''
-
-  const senderCondition = senderId !== undefined ? 'AND msg.sender_id = ?' : ''
-  const senderParams = senderId !== undefined ? [senderId] : []
-
-  try {
-    const countSql = `
-      SELECT COUNT(*) as total
-      ${FULL_MSG_FROM}
-      WHERE msg.id IN (SELECT rowid FROM message_fts WHERE content MATCH ?)
-      ${timeCondition}
-      ${senderCondition}
-    `
-    const totalRow = db.prepare(countSql).get(matchQuery, ...timeParams, ...senderParams) as { total: number }
-    const total = totalRow?.total || 0
-
-    const sql = `
-      ${FULL_MSG_SELECT}
-      WHERE msg.id IN (SELECT rowid FROM message_fts WHERE content MATCH ?)
-      ${timeCondition}
-      ${senderCondition}
-      ORDER BY msg.ts DESC
-      LIMIT ? OFFSET ?
-    `
-    const rows = db.prepare(sql).all(matchQuery, ...timeParams, ...senderParams, limit, offset) as FullMessageRow[]
-
-    return { messages: rows.map(mapMessageRow), total }
-  } catch (error) {
-    console.error('[FTS] searchMessages FTS path failed, falling back to LIKE:', error)
-    return searchMessagesWithLike(db, [], filter, limit, offset, senderId)
-  }
-}
-
-/**
- * LIKE search path (fallback or deep_search).
- * Kept as a synchronous helper for the FTS fallback path.
- */
-export function searchMessagesWithLike(
-  db: ReturnType<typeof openDatabase> & object,
-  keywords: string[],
-  filter?: TimeFilter,
-  limit: number = 20,
-  offset: number = 0,
-  senderId?: number
-): MessagesWithTotal {
-  let keywordCondition = '1=1'
-  const keywordParams: string[] = []
-  if (keywords.length > 0) {
-    keywordCondition = `(${keywords.map(() => `msg.content LIKE ?`).join(' OR ')})`
-    keywordParams.push(...keywords.map((k) => `%${k}%`))
-  }
-
-  const { clause: timeClause, params: timeParams } = buildTimeFilter(filter, 'msg')
-  const timeCondition = timeClause ? timeClause.replace('WHERE', 'AND') : ''
-
-  const senderCondition = senderId !== undefined ? 'AND msg.sender_id = ?' : ''
-  const senderParams = senderId !== undefined ? [senderId] : []
-
-  const countSql = `
-    SELECT COUNT(*) as total
-    ${FULL_MSG_FROM}
-    WHERE ${keywordCondition}
-    ${timeCondition}
-    ${senderCondition}
-  `
-  const totalRow = db.prepare(countSql).get(...keywordParams, ...timeParams, ...senderParams) as { total: number }
-  const total = totalRow?.total || 0
-
-  const sql = `
-    ${FULL_MSG_SELECT}
-    WHERE ${keywordCondition}
-    ${timeCondition}
-    ${senderCondition}
-    ORDER BY msg.ts DESC
-    LIMIT ? OFFSET ?
-  `
-  const rows = db.prepare(sql).all(...keywordParams, ...timeParams, ...senderParams, limit, offset) as FullMessageRow[]
-
-  return { messages: rows.map(mapMessageRow), total }
 }
 
 /**

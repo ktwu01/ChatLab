@@ -13,6 +13,7 @@ import { getDefaultGeneralAssistantId } from '../ai/assistant/defaultGeneral'
 import { getDefaultAssistantConfig, buildPiModel, findModelDefinition } from '../ai/llm'
 import type { AIServiceConfig } from '../ai/llm/types'
 import { countMessagesTokens } from '@openchatlab/node-runtime'
+import { stripAvatarFields } from '@openchatlab/core'
 import * as assistantManager from '../ai/assistant'
 import type { AssistantConfig } from '../ai/assistant/types'
 import * as skillManager from '../ai/skills'
@@ -23,6 +24,7 @@ import {
   type CompressionLlmAdapter,
   completeSimple,
   runSimpleLlmStream,
+  formatAIError,
   type PiMessage,
   type PiTextContent,
 } from '@openchatlab/node-runtime'
@@ -88,137 +90,9 @@ function toPiSimpleMessages(messages: Array<{ role: string; content: string }>, 
 // 用于跟踪活跃的 Agent 请求，支持中止操作
 const activeAgentRequests = new Map<string, AbortController>()
 
-/**
- * 格式化 AI 报错信息，输出更友好的提示
- */
-function formatAIError(error: unknown, provider?: llm.LLMProvider): string {
-  const candidates: unknown[] = []
-  if (error) {
-    candidates.push(error)
-  }
-
-  const errorObj = error as {
-    lastError?: unknown
-    errors?: unknown[]
-  }
-
-  if (errorObj?.lastError) {
-    candidates.push(errorObj.lastError)
-  }
-
-  if (Array.isArray(errorObj?.errors)) {
-    candidates.push(...errorObj.errors)
-  }
-
-  let rawMessage = ''
-  let statusCode: number | undefined
-  let retrySeconds: number | undefined
-
-  for (const candidate of candidates) {
-    if (!candidate || typeof candidate !== 'object') {
-      if (!rawMessage && typeof candidate === 'string') {
-        rawMessage = candidate
-      }
-      continue
-    }
-
-    const record = candidate as Record<string, unknown>
-    if (typeof record.statusCode === 'number') {
-      statusCode = record.statusCode
-    }
-
-    if (!rawMessage && typeof record.message === 'string') {
-      rawMessage = record.message
-    }
-
-    if (!rawMessage && record.data && typeof record.data === 'object') {
-      const data = record.data as { error?: { message?: string } }
-      if (data.error?.message) {
-        rawMessage = data.error.message
-      }
-    }
-
-    if (record.responseBody && typeof record.responseBody === 'string') {
-      const responseBody = record.responseBody
-      try {
-        const parsed = JSON.parse(responseBody) as { error?: { message?: string } }
-        if (!rawMessage && parsed.error?.message) {
-          rawMessage = parsed.error.message
-        }
-      } catch {
-        if (!rawMessage) {
-          rawMessage = responseBody
-        }
-      }
-    }
-
-    if (rawMessage) {
-      const retryMatch = rawMessage.match(/retry in ([0-9.]+)s/i)
-      if (retryMatch) {
-        retrySeconds = Math.ceil(Number(retryMatch[1]))
-      }
-    }
-  }
-
-  const fallbackMessage = rawMessage || String(error)
-  const lowerMessage = fallbackMessage.toLowerCase()
-  const providerName =
-    provider === 'openai-compatible'
-      ? t('llm.genericProviderName')
-      : provider
-        ? llm.getProviderInfo(provider)?.name || provider
-        : t('llm.genericProviderName')
-
-  let friendlyMessage = ''
-
-  if (statusCode === 429 || lowerMessage.includes('quota') || lowerMessage.includes('resource_exhausted')) {
-    friendlyMessage = retrySeconds
-      ? `${providerName} quota exhausted, please retry after ${retrySeconds}s or upgrade your quota.`
-      : `${providerName} quota exhausted, please retry later or upgrade your quota.`
-  } else if (
-    statusCode === 403 &&
-    (lowerMessage.includes('quota') || lowerMessage.includes('not enough') || lowerMessage.includes('insufficient'))
-  ) {
-    friendlyMessage = `${providerName} rejected the request due to insufficient quota or balance.`
-  } else if (statusCode === 503 || lowerMessage.includes('overloaded') || lowerMessage.includes('unavailable')) {
-    friendlyMessage = `${providerName} model is overloaded, please retry later.`
-  } else if (fallbackMessage.length > 300) {
-    friendlyMessage = `${fallbackMessage.slice(0, 300)}...`
-  } else {
-    friendlyMessage = fallbackMessage
-  }
-
-  const details = [statusCode ? `status=${statusCode}` : null, fallbackMessage].filter(Boolean).join('; ')
-
-  // 同时返回封装提示和原始错误详情，便于用户定位第三方平台问题。
-  if (friendlyMessage !== fallbackMessage) {
-    return `${friendlyMessage}\n\n${t('llm.rawErrorLabel')}: ${details}`
-  }
-
-  return friendlyMessage
-}
-
-/**
- * 递归剥离对象中的 avatar/senderAvatar 字段（base64 大数据）
- * 用于工具测试场景，避免传输和序列化大量无用头像数据
- */
-function stripAvatarFields(obj: unknown): void {
-  if (!obj || typeof obj !== 'object') return
-  if (Array.isArray(obj)) {
-    for (const item of obj) stripAvatarFields(item)
-    return
-  }
-  const record = obj as Record<string, unknown>
-  for (const key of Object.keys(record)) {
-    if ((key === 'avatar' || key === 'senderAvatar') && typeof record[key] === 'string') {
-      const val = record[key] as string
-      if (val.length > 200) {
-        record[key] = '[stripped]'
-      }
-    } else if (typeof record[key] === 'object' && record[key] !== null) {
-      stripAvatarFields(record[key])
-    }
-  }
+function resolveProviderName(provider?: llm.LLMProvider): string {
+  if (provider === 'openai-compatible') return t('llm.genericProviderName')
+  return provider ? llm.getProviderInfo(provider)?.name || provider : t('llm.genericProviderName')
 }
 
 export function registerAIHandlers({ win }: IpcContext): void {
@@ -1305,7 +1179,10 @@ export function registerAIHandlers({ win }: IpcContext): void {
               return
             }
             const serializedError = serializeError(error, activeAIConfig.provider)
-            serializedError.friendlyMessage = formatAIError(error, activeAIConfig.provider)
+            serializedError.friendlyMessage = formatAIError(error, {
+              providerName: resolveProviderName(activeAIConfig.provider),
+              rawErrorLabel: t('llm.rawErrorLabel'),
+            })
             if (!serializedError.url && activeAIConfig.baseUrl) {
               serializedError.url = activeAIConfig.baseUrl
             }

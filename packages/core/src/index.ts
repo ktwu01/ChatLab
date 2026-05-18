@@ -88,6 +88,7 @@ export {
   fetchMessagesBefore,
   fetchMessagesAfter,
   searchMessagesLikeAsync,
+  searchMessagesWithFtsAsync,
   fetchMessageContext,
   fetchSearchMessageContext,
   fetchAllRecentMessages,
@@ -223,6 +224,7 @@ export {
   getBuiltinModelById,
   extractThinkingContent,
   stripToolCallTags,
+  stripAvatarFields,
 } from './ai'
 
 // Import utilities

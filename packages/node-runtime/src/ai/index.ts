@@ -7,6 +7,10 @@
 // AI Logger
 export { AiLogger, extractErrorInfo, extractErrorStack } from './ai-logger'
 
+// Error formatting
+export { formatAIError } from './error-formatter'
+export type { FormatAIErrorOptions } from './error-formatter'
+
 export type { AssistantConfig, AssistantSummary, SkillDef, SkillSummary } from './types'
 export { parseAssistantFile, serializeAssistant } from './assistant-parser'
 

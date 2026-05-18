@@ -49,8 +49,9 @@ export {
 // FTS5 full-text search operations
 export { hasFtsTable, createFtsTable, buildFtsIndex, rebuildFtsIndex, insertFtsEntries, searchByFts } from './fts'
 
-// AI Logger
-export { AiLogger, extractErrorInfo, extractErrorStack } from './ai'
+// AI Logger & Error formatting
+export { AiLogger, extractErrorInfo, extractErrorStack, formatAIError } from './ai'
+export type { FormatAIErrorOptions } from './ai'
 export { NodePathProvider } from './node-path-provider'
 export { DatabaseManager } from './database-manager'
 export { createJiebaNlpProvider } from './jieba-nlp-provider'
