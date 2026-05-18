@@ -1,30 +1,23 @@
 /**
  * 数据库迁移系统
  *
- * 用于管理数据库 schema 的版本升级。
- * 每次添加新字段或修改表结构时，创建一个新的迁移脚本。
- *
- * 使用方式：
- * 1. 在 migrations 数组中添加新的迁移对象
- * 2. version 必须递增
- * 3. up 函数执行迁移逻辑
+ * 迁移脚本定义在 Electron 层（依赖 NLP 分词器、i18n 等平台特性），
+ * 但执行引擎委托给 @openchatlab/core 的 runMigrations。
  */
 
 import type Database from 'better-sqlite3'
+import {
+  CURRENT_SCHEMA_VERSION,
+  runMigrations,
+  needsMigration as coreNeedsMigration,
+  type Migration as CoreMigration,
+} from '@openchatlab/core'
+import type { DatabaseAdapter } from '@openchatlab/core'
+import { BetterSqliteAdapter } from '@openchatlab/node-runtime'
 import { t } from '../i18n'
 import { tokenizeForFts } from '../nlp/ftsTokenizer'
 
-/** 迁移脚本接口 */
-interface Migration {
-  /** 版本号（必须递增） */
-  version: number
-  /** 迁移描述 i18n key（技术说明） */
-  descriptionKey: string
-  /** 用户可读的升级原因 i18n key（显示在弹窗中） */
-  userMessageKey: string
-  /** 迁移执行函数 */
-  up: (db: Database.Database) => void
-}
+export { CURRENT_SCHEMA_VERSION }
 
 /** 导出给前端使用的迁移信息 */
 export interface MigrationInfo {
@@ -35,21 +28,19 @@ export interface MigrationInfo {
   userMessage: string
 }
 
-/** 当前 schema 版本（最新迁移的版本号） */
-export const CURRENT_SCHEMA_VERSION = 4
+interface ElectronMigration extends CoreMigration {
+  descriptionKey: string
+  userMessageKey: string
+}
 
-/**
- * 迁移脚本列表
- * 注意：版本号必须递增，每个迁移只执行一次
- */
-const migrations: Migration[] = [
+const migrations: ElectronMigration[] = [
   {
     version: 1,
+    description: 'Add owner_id column to meta',
     descriptionKey: 'database.migrationV1Desc',
     userMessageKey: 'database.migrationV1Message',
-    up: (db) => {
-      // 检查 owner_id 列是否已存在（防止重复执行）
-      const tableInfo = db.prepare('PRAGMA table_info(meta)').all() as Array<{ name: string }>
+    up: (db: DatabaseAdapter) => {
+      const tableInfo = db.pragma('table_info(meta)') as Array<{ name: string }>
       const hasOwnerIdColumn = tableInfo.some((col) => col.name === 'owner_id')
       if (!hasOwnerIdColumn) {
         db.exec('ALTER TABLE meta ADD COLUMN owner_id TEXT')
@@ -58,45 +49,41 @@ const migrations: Migration[] = [
   },
   {
     version: 2,
+    description: 'Add roles, reply_to_message_id, platform_message_id columns',
     descriptionKey: 'database.migrationV2Desc',
     userMessageKey: 'database.migrationV2Message',
-    up: (db) => {
-      // 检查 roles 列是否已存在（防止重复执行）
-      const memberTableInfo = db.prepare('PRAGMA table_info(member)').all() as Array<{ name: string }>
+    up: (db: DatabaseAdapter) => {
+      const memberTableInfo = db.pragma('table_info(member)') as Array<{ name: string }>
       const hasRolesColumn = memberTableInfo.some((col) => col.name === 'roles')
       if (!hasRolesColumn) {
         db.exec("ALTER TABLE member ADD COLUMN roles TEXT DEFAULT '[]'")
       }
 
-      // 检查 message 表的列
-      const messageTableInfo = db.prepare('PRAGMA table_info(message)').all() as Array<{ name: string }>
+      const messageTableInfo = db.pragma('table_info(message)') as Array<{ name: string }>
 
-      // 检查 reply_to_message_id 列是否已存在
       const hasReplyColumn = messageTableInfo.some((col) => col.name === 'reply_to_message_id')
       if (!hasReplyColumn) {
         db.exec('ALTER TABLE message ADD COLUMN reply_to_message_id TEXT DEFAULT NULL')
       }
 
-      // 添加 platform_message_id 列（存储平台原始消息 ID，用于回复关联查询）
       const hasPlatformMsgIdColumn = messageTableInfo.some((col) => col.name === 'platform_message_id')
       if (!hasPlatformMsgIdColumn) {
         db.exec('ALTER TABLE message ADD COLUMN platform_message_id TEXT DEFAULT NULL')
       }
 
-      // 创建索引以加速回复查询
       try {
         db.exec('CREATE INDEX IF NOT EXISTS idx_message_platform_id ON message(platform_message_id)')
       } catch {
-        // 索引可能已存在
+        // Index may already exist
       }
     },
   },
   {
     version: 3,
+    description: 'Add chat_session and message_context tables',
     descriptionKey: 'database.migrationV3Desc',
     userMessageKey: 'database.migrationV3Message',
-    up: (db) => {
-      // 创建 chat_session 会话表
+    up: (db: DatabaseAdapter) => {
       db.exec(`
         CREATE TABLE IF NOT EXISTS chat_session (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -108,14 +95,12 @@ const migrations: Migration[] = [
         )
       `)
 
-      // 创建会话时间索引
       try {
         db.exec('CREATE INDEX IF NOT EXISTS idx_session_time ON chat_session(start_ts, end_ts)')
       } catch {
-        // 索引可能已存在
+        // Index may already exist
       }
 
-      // 创建 message_context 消息上下文表（预留 topic_id）
       db.exec(`
         CREATE TABLE IF NOT EXISTS message_context (
           message_id INTEGER PRIMARY KEY,
@@ -124,15 +109,13 @@ const migrations: Migration[] = [
         )
       `)
 
-      // 创建 session_id 索引
       try {
         db.exec('CREATE INDEX IF NOT EXISTS idx_context_session ON message_context(session_id)')
       } catch {
-        // 索引可能已存在
+        // Index may already exist
       }
 
-      // 检查 meta 表是否已有 session_gap_threshold 列
-      const tableInfo = db.prepare('PRAGMA table_info(meta)').all() as Array<{ name: string }>
+      const tableInfo = db.pragma('table_info(meta)') as Array<{ name: string }>
       const hasGapThresholdColumn = tableInfo.some((col) => col.name === 'session_gap_threshold')
       if (!hasGapThresholdColumn) {
         db.exec('ALTER TABLE meta ADD COLUMN session_gap_threshold INTEGER')
@@ -141,9 +124,10 @@ const migrations: Migration[] = [
   },
   {
     version: 4,
+    description: 'Add FTS5 full-text search index',
     descriptionKey: 'database.migrationV4Desc',
     userMessageKey: 'database.migrationV4Message',
-    up: (db) => {
+    up: (db: DatabaseAdapter) => {
       const hasTable = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='message_fts'").get()
       if (hasTable) return
 
@@ -160,10 +144,11 @@ const migrations: Migration[] = [
 
       const countRow = db
         .prepare("SELECT COUNT(*) as total FROM message WHERE type = 0 AND content IS NOT NULL AND content != ''")
-        .get() as { total: number }
+        .get() as { total: number } | undefined
 
+      const total = countRow?.total ?? 0
       let offset = 0
-      while (offset < countRow.total) {
+      while (offset < total) {
         const rows = db
           .prepare(
             `SELECT id, content FROM message
@@ -188,50 +173,9 @@ const migrations: Migration[] = [
 ]
 
 /**
- * 获取数据库的 schema 版本
- * 如果没有版本信息，返回 0
+ * Check database structural integrity (meta table must exist)
  */
-function getSchemaVersion(db: Database.Database): number {
-  try {
-    // 检查 meta 表是否有 schema_version 列
-    const tableInfo = db.prepare('PRAGMA table_info(meta)').all() as Array<{ name: string }>
-    const hasVersionColumn = tableInfo.some((col) => col.name === 'schema_version')
-
-    if (!hasVersionColumn) {
-      return 0
-    }
-
-    const result = db.prepare('SELECT schema_version FROM meta LIMIT 1').get() as
-      | { schema_version: number | null }
-      | undefined
-    return result?.schema_version ?? 0
-  } catch {
-    return 0
-  }
-}
-
-/**
- * 设置数据库的 schema 版本
- */
-function setSchemaVersion(db: Database.Database, version: number): void {
-  // 检查 schema_version 列是否存在
-  const tableInfo = db.prepare('PRAGMA table_info(meta)').all() as Array<{ name: string }>
-  const hasVersionColumn = tableInfo.some((col) => col.name === 'schema_version')
-
-  if (!hasVersionColumn) {
-    // 添加 schema_version 列
-    db.exec('ALTER TABLE meta ADD COLUMN schema_version INTEGER DEFAULT 0')
-  }
-
-  // 更新版本号
-  db.prepare('UPDATE meta SET schema_version = ?').run(version)
-}
-
-/**
- * 检查数据库结构是否完整（meta 表必须存在）
- * 如果 meta 表不存在，说明数据库损坏或不完整
- */
-function checkDatabaseIntegrity(db: Database.Database): { valid: boolean; error?: string } {
+function checkDatabaseIntegrity(db: DatabaseAdapter): { valid: boolean; error?: string } {
   try {
     const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='meta'").all() as Array<{
       name: string
@@ -253,59 +197,34 @@ function checkDatabaseIntegrity(db: Database.Database): { valid: boolean; error?
 }
 
 /**
- * 执行数据库迁移
- * 自动检测当前版本并执行所有需要的迁移
+ * Execute database migrations.
+ * Wraps better-sqlite3 Database in a DatabaseAdapter and delegates to core runMigrations.
  *
- * @param db 数据库连接
- * @param forceRepair 是否强制修复（即使版本号已是最新也重新执行迁移脚本）
- * @returns 是否执行了迁移
- * @throws 如果数据库结构不完整
+ * @param db Raw better-sqlite3 connection (stays open after migration)
+ * @param forceRepair Re-run all migration scripts even if version is current
  */
 export function migrateDatabase(db: Database.Database, forceRepair = false): boolean {
-  // 首先检查数据库结构完整性
-  const integrity = checkDatabaseIntegrity(db)
+  const adapter = new BetterSqliteAdapter(db)
+
+  const integrity = checkDatabaseIntegrity(adapter)
   if (!integrity.valid) {
     throw new Error(integrity.error)
   }
 
-  const currentVersion = getSchemaVersion(db)
-
-  // 如果不是强制修复模式，检查版本号
-  if (!forceRepair && currentVersion >= CURRENT_SCHEMA_VERSION) {
-    return false
-  }
-
-  // 获取需要执行的迁移
-  // 如果是强制修复，从 version 0 开始执行所有迁移
-  const pendingMigrations = forceRepair ? migrations : migrations.filter((m) => m.version > currentVersion)
-
-  if (pendingMigrations.length === 0) {
-    return false
-  }
-
-  // 在事务中执行所有迁移
-  const migrate = db.transaction(() => {
-    for (const migration of pendingMigrations) {
-      migration.up(db)
-      setSchemaVersion(db, migration.version)
-    }
-  })
-
-  migrate()
-  return true
+  return runMigrations(adapter, migrations, forceRepair)
 }
 
 /**
- * 检查数据库是否需要迁移
+ * Check if database needs migration
  */
 export function needsMigration(db: Database.Database): boolean {
-  const currentVersion = getSchemaVersion(db)
-  return currentVersion < CURRENT_SCHEMA_VERSION
+  const adapter = new BetterSqliteAdapter(db)
+  return coreNeedsMigration(adapter, CURRENT_SCHEMA_VERSION)
 }
 
 /**
- * 获取待执行的迁移信息（用户可读）
- * @param fromVersion 起始版本（不含）
+ * Get pending migration info for UI display
+ * @param fromVersion Starting version (exclusive)
  */
 export function getPendingMigrationInfos(fromVersion = 0): MigrationInfo[] {
   return migrations
