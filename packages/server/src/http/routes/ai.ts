@@ -15,7 +15,14 @@ import type { FastifyInstance } from 'fastify'
 import type { DatabaseManager, AIConversationManager } from '@openchatlab/node-runtime'
 import { SkillManager, createActivateSkillTool } from '@openchatlab/node-runtime'
 import type { AssistantConfig } from '@openchatlab/node-runtime'
-import { BUILTIN_TOOL_CATALOG, BUILTIN_PROVIDERS, BUILTIN_MODELS, getBuiltinModelsByProvider } from '@openchatlab/core'
+import {
+  BUILTIN_TOOL_CATALOG,
+  BUILTIN_PROVIDERS,
+  BUILTIN_MODELS,
+  getBuiltinModelsByProvider,
+  getChatOverview,
+} from '@openchatlab/core'
+import type { DataSnapshot, OwnerInfo, MentionedMember } from '@openchatlab/node-runtime'
 import { AGENT_TOOL_REGISTRY } from '@openchatlab/tools'
 import { adaptToolsForAgent } from '../../ai/tool-adapter'
 import { loadAssistantConfig } from '../../ai/assistant-loader'
@@ -484,9 +491,21 @@ export function registerAiRoutes(
         bufferSizePercent?: number
         maxToolResultPercent?: number
       }
+      ownerInfo?: OwnerInfo
+      mentionedMembers?: MentionedMember[]
     }
   }>('/_web/ai/agent/stream', async (request, reply) => {
-    const { userMessage, conversationId, sessionId, chatType, locale, assistantId, compressionConfig } = request.body
+    const {
+      userMessage,
+      conversationId,
+      sessionId,
+      chatType,
+      locale,
+      assistantId,
+      compressionConfig,
+      ownerInfo,
+      mentionedMembers,
+    } = request.body
 
     const requestId = `req_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
     const abortController = new AbortController()
@@ -564,6 +583,27 @@ export function registerAiRoutes(
           }
         : undefined
 
+      let dataSnapshot: DataSnapshot | undefined
+      if (db) {
+        try {
+          const overview = getChatOverview(db, 5)
+          if (overview) {
+            dataSnapshot = {
+              name: overview.name,
+              platform: overview.platform,
+              type: overview.type,
+              totalMessages: overview.totalMessages,
+              totalMembers: overview.totalMembers,
+              firstMessageTs: overview.firstMessageTs,
+              lastMessageTs: overview.lastMessageTs,
+              capturedAt: Math.floor(Date.now() / 1000),
+            }
+          }
+        } catch {
+          // non-fatal: proceed without snapshot
+        }
+      }
+
       await runServerAgent({
         userMessage,
         conversationId,
@@ -577,6 +617,9 @@ export function registerAiRoutes(
         convManager,
         onEvent,
         abortSignal: abortController.signal,
+        ownerInfo,
+        mentionedMembers,
+        dataSnapshot,
       })
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error)

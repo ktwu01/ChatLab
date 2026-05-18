@@ -103,6 +103,9 @@ export type {
   TranslateFn,
 } from './agent/prompt-builder'
 
+// AI i18n (shared translations for agent prompts and tool descriptions)
+export { createAiTranslate, aiLocales } from './i18n'
+
 // Summary generation
 export {
   generateSessionSummary,

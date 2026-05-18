@@ -9,6 +9,8 @@ import {
   runAgentCore,
   completeSimple,
   checkAndCompress,
+  buildSystemPrompt,
+  createAiTranslate,
   type AgentCoreEvent,
   type SimpleHistoryMessage,
   type AIConversationManager,
@@ -16,6 +18,9 @@ import {
   type CompressionLlmAdapter,
   type PiTextContent,
   type AgentTool,
+  type DataSnapshot,
+  type OwnerInfo,
+  type MentionedMember,
 } from '@openchatlab/node-runtime'
 
 import { getDefaultAssistantConfig, buildPiModel } from './llm-config'
@@ -53,46 +58,9 @@ export interface RunAgentOptions {
   convManager: AIConversationManager
   onEvent: (event: AgentStreamEvent) => void
   abortSignal?: AbortSignal
-}
-
-function buildSystemPrompt(
-  _chatType: 'group' | 'private',
-  assistantSystemPrompt?: string,
-  locale: string = 'zh-CN',
-  skillMenu?: string | null
-): string {
-  const now = new Date()
-  const dateLocale = locale.startsWith('zh') ? 'zh-CN' : 'en-US'
-  const currentDate = now.toLocaleDateString(dateLocale, {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-    weekday: 'long',
-  })
-
-  const isZh = locale.startsWith('zh')
-  const role =
-    assistantSystemPrompt ||
-    (isZh
-      ? '你是 ChatLab AI 助手，一个智能对话助手。请友好、准确地回答用户的问题。'
-      : 'You are ChatLab AI assistant, an intelligent conversational assistant. Please answer questions in a friendly and accurate manner.')
-
-  const datePrefix = isZh ? '当前日期是' : 'Current date is'
-  const responseNote = isZh
-    ? '请直接回答用户的问题，不要使用工具除非确实需要。'
-    : "Answer the user's question directly. Only use tools when truly necessary."
-
-  let prompt = `${role}
-
-${datePrefix} ${currentDate}。
-
-${responseNote}`
-
-  if (skillMenu) {
-    prompt += `\n\n${skillMenu}`
-  }
-
-  return prompt
+  ownerInfo?: OwnerInfo
+  mentionedMembers?: MentionedMember[]
+  dataSnapshot?: DataSnapshot
 }
 
 function mapCoreEventToStream(
@@ -155,6 +123,9 @@ export async function runServerAgent(options: RunAgentOptions): Promise<void> {
     convManager,
     onEvent,
     abortSignal,
+    ownerInfo,
+    mentionedMembers,
+    dataSnapshot,
   } = options
 
   const llmConfig = getDefaultAssistantConfig(aiDataDir)
@@ -165,7 +136,23 @@ export async function runServerAgent(options: RunAgentOptions): Promise<void> {
   }
 
   const piModel = buildPiModel(llmConfig)
-  const systemPrompt = buildSystemPrompt(chatType, assistantSystemPrompt, locale, skillMenu)
+  const t = createAiTranslate(locale)
+
+  let skillCtx: { skillDef?: { name: string; prompt: string }; skillMenu?: string } | undefined
+  if (skillMenu) {
+    skillCtx = { skillMenu }
+  }
+
+  const systemPrompt = buildSystemPrompt({
+    t,
+    chatType,
+    assistantSystemPrompt,
+    ownerInfo,
+    locale,
+    skillCtx,
+    mentionedMembers,
+    dataSnapshot,
+  })
 
   if (compressionConfig?.enabled) {
     const llmAdapter: CompressionLlmAdapter = {

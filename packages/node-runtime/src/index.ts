@@ -170,7 +170,7 @@ export { AgentEventHandler, estimateTokensFromText } from './ai'
 export type { TokenUsage, AgentRuntimeStatus, AgentStreamChunk, EventHandlerConfig, EventHandlerContext } from './ai'
 
 // Agent Prompt Builder
-export { buildSystemPrompt } from './ai'
+export { buildSystemPrompt, createAiTranslate, aiLocales } from './ai'
 export type {
   BuildSystemPromptOptions,
   DataSnapshot,

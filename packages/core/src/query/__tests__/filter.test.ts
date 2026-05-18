@@ -47,7 +47,8 @@ function createMockDb(lightRows: LightRow[], fullRows: FullMessageRow[]): Databa
           if (isLightQuery) {
             return lightRows as unknown as Record<string, unknown>[]
           }
-          const limit = typeof _params[_params.length - 2] === 'number' ? (_params[_params.length - 2] as number) : fullRows.length
+          const limit =
+            typeof _params[_params.length - 2] === 'number' ? (_params[_params.length - 2] as number) : fullRows.length
           const offset = typeof _params[_params.length - 1] === 'number' ? (_params[_params.length - 1] as number) : 0
           return fullRows.slice(offset, offset + limit) as unknown as Record<string, unknown>[]
         },
