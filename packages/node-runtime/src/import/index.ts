@@ -12,3 +12,15 @@ export {
   getErrorCount,
   logSummary,
 } from './perf-logger'
+export { streamingImport, analyzeNewImport, streamParseFileInfo } from './streaming-importer'
+export type {
+  SkipReasons,
+  ImportDiagnostics,
+  StreamImportResult,
+  ImportProgressCallback,
+  ImportLogger,
+  StreamImportDeps,
+  AnalyzeNewImportResult,
+  StreamParseFileInfoResult,
+  StreamParseFileInfoDeps,
+} from './streaming-importer'
