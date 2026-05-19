@@ -88,6 +88,49 @@ importers:
         specifier: ^3.1.1
         version: 3.2.6(typescript@5.9.3)
 
+  apps/cli:
+    dependencies:
+      '@fastify/multipart':
+        specifier: ^10.0.0
+        version: 10.0.0
+      '@fastify/static':
+        specifier: ^9.1.3
+        version: 9.1.3
+      '@modelcontextprotocol/sdk':
+        specifier: ^1.12.1
+        version: 1.29.0(zod@3.25.76)
+      '@openchatlab/config':
+        specifier: workspace:*
+        version: link:../../packages/config
+      '@openchatlab/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@openchatlab/node-runtime':
+        specifier: workspace:*
+        version: link:../../packages/node-runtime
+      '@openchatlab/parser':
+        specifier: workspace:*
+        version: link:../../packages/parser
+      '@openchatlab/shared-types':
+        specifier: workspace:*
+        version: link:../../packages/shared-types
+      '@openchatlab/sync':
+        specifier: workspace:*
+        version: link:../../packages/sync
+      '@openchatlab/tools':
+        specifier: workspace:*
+        version: link:../../packages/tools
+      commander:
+        specifier: ^13.1.0
+        version: 13.1.0
+      fastify:
+        specifier: ^5.8.4
+        version: 5.8.4
+    devDependencies:
+      tsx:
+        specifier: ^4.21.0
+        version: 4.21.0
+
   apps/desktop:
     dependencies:
       '@aptabase/electron':
@@ -180,49 +223,6 @@ importers:
       '@types/stream-json':
         specifier: ^1.7.8
         version: 1.7.8
-
-  packages/server:
-    dependencies:
-      '@fastify/multipart':
-        specifier: ^10.0.0
-        version: 10.0.0
-      '@fastify/static':
-        specifier: ^9.1.3
-        version: 9.1.3
-      '@modelcontextprotocol/sdk':
-        specifier: ^1.12.1
-        version: 1.29.0(zod@3.25.76)
-      '@openchatlab/config':
-        specifier: workspace:*
-        version: link:../config
-      '@openchatlab/core':
-        specifier: workspace:*
-        version: link:../core
-      '@openchatlab/node-runtime':
-        specifier: workspace:*
-        version: link:../node-runtime
-      '@openchatlab/parser':
-        specifier: workspace:*
-        version: link:../parser
-      '@openchatlab/shared-types':
-        specifier: workspace:*
-        version: link:../shared-types
-      '@openchatlab/sync':
-        specifier: workspace:*
-        version: link:../sync
-      '@openchatlab/tools':
-        specifier: workspace:*
-        version: link:../tools
-      commander:
-        specifier: ^13.1.0
-        version: 13.1.0
-      fastify:
-        specifier: ^5.8.4
-        version: 5.8.4
-    devDependencies:
-      tsx:
-        specifier: ^4.21.0
-        version: 4.21.0
 
   packages/shared-types: {}
 

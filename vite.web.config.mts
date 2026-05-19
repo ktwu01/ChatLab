@@ -50,7 +50,7 @@ function chatlabServePlugin(): Plugin {
         return
       }
 
-      const serverDir = resolve(__dirname, 'packages/server')
+      const serverDir = resolve(__dirname, 'apps/cli')
       const coreDir = resolve(__dirname, 'packages/core/src')
       const runtimeDir = resolve(__dirname, 'packages/node-runtime/src')
       serverProcess = spawn(

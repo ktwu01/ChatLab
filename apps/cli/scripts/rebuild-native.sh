@@ -3,7 +3,7 @@
 # 在隔离目录中编译 better-sqlite3 的系统 Node.js 原生模块，
 # 避免与 electron-rebuild 产生冲突。
 #
-# 产物：packages/server/native/better_sqlite3.node
+# 产物：apps/cli/native/better_sqlite3.node
 #
 set -e
 

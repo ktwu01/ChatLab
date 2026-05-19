@@ -1,5 +1,5 @@
 {
-  "name": "chatlab",
+  "name": "@openchatlab/chatlab",
   "version": "0.0.1",
   "private": true,
   "description": "ChatLab CLI & Service - 聊天记录分析工具",

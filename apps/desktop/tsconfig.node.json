@@ -11,7 +11,7 @@
     "../../packages/node-runtime/**/*",
     "../../packages/config/**/*",
     "../../packages/parser/**/*",
-    "../../packages/server/**/*",
+    "../../apps/cli/**/*",
     "../../packages/tools/**/*",
     "../../packages/sync/**/*"
   ],

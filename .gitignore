@@ -18,7 +18,7 @@ error-log-*.txt
 # Project
 dist/
 dist-web/
-packages/server/native/
+apps/cli/native/
 .history/
 out
 .obskey

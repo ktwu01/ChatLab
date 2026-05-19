@@ -34,14 +34,14 @@ test('reports invalid native binding load failure', () => {
 })
 
 test('reports valid native binding when it can be loaded by current Node', () => {
-  const nativePath = path.resolve('packages/server/native/better_sqlite3.node')
+  const nativePath = path.resolve('apps/cli/native/better_sqlite3.node')
   const status = getNativeStatus(nativePath)
   assert.equal(status.ok, true)
   assert.equal(status.reason, 'valid')
 })
 
 test('prints status to stderr so CLI stdout stays machine-readable', () => {
-  const result = spawnSync(process.execPath, ['packages/server/scripts/ensure-native.mjs', '--check'], {
+  const result = spawnSync(process.execPath, ['apps/cli/scripts/ensure-native.mjs', '--check'], {
     encoding: 'utf8',
   })
 

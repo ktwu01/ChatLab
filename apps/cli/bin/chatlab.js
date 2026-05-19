@@ -8,6 +8,6 @@
  */
 
 // 开发阶段占位，实际通过 package.json scripts 的 tsx 运行
-console.error('Please run via: npx tsx packages/server/src/cli.ts')
-console.error('Or use: pnpm --filter chatlab dev')
+console.error('Please run via: npx tsx apps/cli/src/cli.ts')
+console.error('Or use: pnpm --filter @openchatlab/chatlab cli')
 process.exit(1)

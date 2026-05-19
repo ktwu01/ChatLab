@@ -1,0 +1,17 @@
+{
+  "extends": "../../tsconfig.node.json",
+  "compilerOptions": {
+    "composite": true,
+    "noEmit": true
+  },
+  "include": [
+    "src/**/*.ts",
+    "../../packages/shared-types/**/*",
+    "../../packages/core/**/*",
+    "../../packages/node-runtime/**/*",
+    "../../packages/config/**/*",
+    "../../packages/parser/**/*",
+    "../../packages/tools/**/*",
+    "../../packages/sync/**/*"
+  ]
+}

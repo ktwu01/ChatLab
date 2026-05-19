@@ -9,7 +9,7 @@ import * as fs from 'fs'
 import * as path from 'path'
 import * as crypto from 'crypto'
 import type { FastifyInstance } from 'fastify'
-import { loadConfig, getConfigDir, MigrationRunner, ALL_MIGRATIONS } from '@openchatlab/config'
+import { loadConfig, writeConfigField, MigrationRunner, ALL_MIGRATIONS } from '@openchatlab/config'
 import type { ChatLabConfig } from '@openchatlab/config'
 import { NodePathProvider, DatabaseManager, AIConversationManager } from '@openchatlab/node-runtime'
 import { createServer } from './server'
@@ -45,22 +45,10 @@ function ensureToken(config: ChatLabConfig): string {
   if (config.api.token) return config.api.token
 
   const token = `clb_${crypto.randomBytes(32).toString('hex')}`
-  const configDir = getConfigDir()
-  const configPath = path.join(configDir, 'config.toml')
   try {
-    let content = ''
-    if (fs.existsSync(configPath)) {
-      content = fs.readFileSync(configPath, 'utf-8')
-    }
-    if (!content.includes('[api]')) {
-      content += `\n[api]\ntoken = "${token}"\n`
-    } else {
-      content = content.replace(/\[api\]/, `[api]\ntoken = "${token}"`)
-    }
-    fs.mkdirSync(configDir, { recursive: true })
-    fs.writeFileSync(configPath, content, 'utf-8')
+    writeConfigField('api', 'token', token)
   } catch {
-    // 写入失败时仍使用生成的 token 运行本次会话
+    // best-effort: token still usable for this session
   }
   return token
 }
