@@ -1,8 +1,7 @@
 /**
- * ChatLab CLI 入口
+ * ChatLab CLI entry point
  *
- * 使用 commander 定义命令结构。
- * 开发阶段运行方式：pnpm --filter chatlab cli -- sessions
+ * Dev: pnpm --filter chatlab-cli run cli -- sessions
  */
 
 import * as fs from 'fs'
@@ -23,20 +22,19 @@ import { getVersion } from './version'
 
 const program = new Command()
 
-program.name('chatlab').description('ChatLab - 聊天记录分析工具').version(getVersion())
+program.name('chatlab').description('ChatLab - Chat history analysis tool').version(getVersion())
 
-// chatlab sessions - 列出所有会话
 program
   .command('sessions')
-  .description('列出所有已导入的聊天会话')
-  .option('--format <format>', '输出格式 (table|json)', 'table')
+  .description('List all imported chat sessions')
+  .option('--format <format>', 'Output format (table|json)', 'table')
   .action((options) => {
     const { dbManager } = initRuntime()
     const sessionIds = dbManager.listSessionIds()
 
     if (sessionIds.length === 0) {
-      console.log('没有找到任何聊天会话。')
-      console.log(`数据目录: ${dbManager['pathProvider'].getUserDataDir()}`)
+      console.log('No chat sessions found.')
+      console.log(`Data directory: ${dbManager['pathProvider'].getUserDataDir()}`)
       dbManager.closeAll()
       return
     }
@@ -55,14 +53,16 @@ program
     if (options.format === 'json') {
       console.log(JSON.stringify(sessions, null, 2))
     } else {
-      console.log(`共 ${sessions.length} 个会话:\n`)
+      console.log(`${sessions.length} session(s) found:\n`)
       for (const s of sessions) {
         if (!s) continue
         const timeRange = formatTimeRange(s.firstMessageTs, s.lastMessageTs)
         console.log(`  ${s.name}`)
         console.log(`    ID: ${s.id}`)
-        console.log(`    平台: ${s.platform} | 类型: ${s.type} | 成员: ${s.totalMembers} | 消息: ${s.totalMessages}`)
-        if (timeRange) console.log(`    时间: ${timeRange}`)
+        console.log(
+          `    Platform: ${s.platform} | Type: ${s.type} | Members: ${s.totalMembers} | Messages: ${s.totalMessages}`
+        )
+        if (timeRange) console.log(`    Range: ${timeRange}`)
         console.log()
       }
     }
@@ -70,17 +70,16 @@ program
     dbManager.closeAll()
   })
 
-// chatlab stats <session-id> - 会话统计
 program
   .command('stats <session-id>')
-  .description('查看会话统计概览')
-  .option('--format <format>', '输出格式 (table|json)', 'table')
-  .option('--top <n>', '显示前 N 个活跃成员', '10')
+  .description('Show session statistics overview')
+  .option('--format <format>', 'Output format (table|json)', 'table')
+  .option('--top <n>', 'Show top N active members', '10')
   .action((sessionId, options) => {
     const { dbManager } = initRuntime()
     const db = dbManager.open(sessionId)
     if (!db) {
-      console.error(`会话 ${sessionId} 不存在`)
+      console.error(`Session ${sessionId} not found`)
       process.exit(1)
     }
 
@@ -91,16 +90,16 @@ program
     if (options.format === 'json') {
       console.log(JSON.stringify({ meta, overview, topMembers }, null, 2))
     } else {
-      console.log(`\n会话: ${meta?.name}`)
-      console.log(`平台: ${meta?.platform} | 类型: ${meta?.type}`)
-      console.log(`消息总数: ${overview.totalMessages}`)
-      console.log(`成员总数: ${overview.totalMembers}`)
-      console.log(`时间范围: ${formatTimeRange(overview.firstMessageTs, overview.lastMessageTs)}`)
+      console.log(`\nSession: ${meta?.name}`)
+      console.log(`Platform: ${meta?.platform} | Type: ${meta?.type}`)
+      console.log(`Total messages: ${overview.totalMessages}`)
+      console.log(`Total members: ${overview.totalMembers}`)
+      console.log(`Time range: ${formatTimeRange(overview.firstMessageTs, overview.lastMessageTs)}`)
 
       if (topMembers.length > 0) {
-        console.log(`\n活跃度排行 (Top ${options.top}):`)
+        console.log(`\nActivity ranking (Top ${options.top}):`)
         for (const [i, m] of topMembers.entries()) {
-          console.log(`  ${i + 1}. ${m.name} - ${m.messageCount} 条 (${m.percentage}%)`)
+          console.log(`  ${i + 1}. ${m.name} - ${m.messageCount} messages (${m.percentage}%)`)
         }
       }
     }
@@ -108,17 +107,16 @@ program
     dbManager.closeAll()
   })
 
-// chatlab search <session-id> <keyword> - 搜索消息
 program
   .command('search <session-id> <keyword>')
-  .description('在聊天记录中搜索关键词')
-  .option('--limit <n>', '返回条数', '20')
-  .option('--format <format>', '输出格式 (table|json)', 'table')
+  .description('Search messages by keyword')
+  .option('--limit <n>', 'Max results to return', '20')
+  .option('--format <format>', 'Output format (table|json)', 'table')
   .action((sessionId, keyword, options) => {
     const { dbManager } = initRuntime()
     const db = dbManager.open(sessionId)
     if (!db) {
-      console.error(`会话 ${sessionId} 不存在`)
+      console.error(`Session ${sessionId} not found`)
       process.exit(1)
     }
 
@@ -129,7 +127,7 @@ program
       console.log(JSON.stringify(result, null, 2))
     } else {
       console.log(
-        `搜索 "${keyword}" - 共 ${result.total} 条结果${result.hasMore ? '（显示前 ' + limit + ' 条）' : ''}:\n`
+        `Search "${keyword}" - ${result.total} result(s)${result.hasMore ? ' (showing first ' + limit + ')' : ''}:\n`
       )
       for (const msg of result.messages) {
         const time = new Date(msg.timestamp * 1000).toLocaleString()
@@ -140,16 +138,15 @@ program
     dbManager.closeAll()
   })
 
-// chatlab members <session-id> - 成员列表
 program
   .command('members <session-id>')
-  .description('查看成员列表')
-  .option('--format <format>', '输出格式 (table|json)', 'table')
+  .description('List session members')
+  .option('--format <format>', 'Output format (table|json)', 'table')
   .action((sessionId, options) => {
     const { dbManager } = initRuntime()
     const db = dbManager.open(sessionId)
     if (!db) {
-      console.error(`会话 ${sessionId} 不存在`)
+      console.error(`Session ${sessionId} not found`)
       process.exit(1)
     }
 
@@ -158,26 +155,25 @@ program
     if (options.format === 'json') {
       console.log(JSON.stringify(members, null, 2))
     } else {
-      console.log(`共 ${members.length} 个成员:\n`)
+      console.log(`${members.length} member(s):\n`)
       for (const [i, m] of members.entries()) {
-        console.log(`  ${i + 1}. ${m.name} (${m.platformId}) - ${m.messageCount} 条消息`)
+        console.log(`  ${i + 1}. ${m.name} (${m.platformId}) - ${m.messageCount} messages`)
       }
     }
 
     dbManager.closeAll()
   })
 
-// chatlab query <session-id> --sql "..." - 执行 SQL
 program
   .command('query <session-id>')
-  .description('对会话数据库执行只读 SQL 查询')
-  .requiredOption('--sql <sql>', 'SQL 查询语句')
-  .option('--format <format>', '输出格式 (table|json)', 'table')
+  .description('Execute a read-only SQL query on a session database')
+  .requiredOption('--sql <sql>', 'SQL query statement')
+  .option('--format <format>', 'Output format (table|json)', 'table')
   .action((sessionId, options) => {
     const { dbManager } = initRuntime()
     const db = dbManager.open(sessionId)
     if (!db) {
-      console.error(`会话 ${sessionId} 不存在`)
+      console.error(`Session ${sessionId} not found`)
       process.exit(1)
     }
 
@@ -187,29 +183,28 @@ program
         console.log(JSON.stringify(result, null, 2))
       } else {
         if (result.rows.length === 0) {
-          console.log('查询无结果。')
+          console.log('No results.')
         } else {
           printTable(result.columns, result.rows)
-          console.log(`\n共 ${result.rowCount} 行${result.truncated ? '（已截断）' : ''}`)
+          console.log(`\n${result.rowCount} row(s)${result.truncated ? ' (truncated)' : ''}`)
         }
       }
     } catch (err) {
-      console.error(`SQL 执行错误: ${err instanceof Error ? err.message : err}`)
+      console.error(`SQL error: ${err instanceof Error ? err.message : err}`)
       process.exit(1)
     }
 
     dbManager.closeAll()
   })
 
-// chatlab import <file> - 导入聊天记录
 program
   .command('import <file>')
-  .description('导入聊天记录文件（支持 14+ 格式：QQ/WeChat/Telegram/WhatsApp/LINE/Discord/Instagram 等）')
-  .option('--session-id <id>', '指定会话 ID（不指定则自动生成）')
-  .option('--format <id>', '指定格式 ID（跳过自动检测）')
+  .description('Import a chat history file (14+ formats: QQ/WeChat/Telegram/WhatsApp/LINE/Discord/Instagram, etc.)')
+  .option('--session-id <id>', 'Specify session ID (auto-generated if omitted)')
+  .option('--format <id>', 'Specify format ID (skip auto-detection)')
   .action(async (file, options) => {
     if (!fs.existsSync(file)) {
-      console.error(`文件不存在: ${file}`)
+      console.error(`File not found: ${file}`)
       process.exit(1)
     }
 
@@ -219,28 +214,20 @@ program
 
     const format = detectFormat(file)
     if (!format && !options.format) {
-      console.error(`无法识别文件格式: ${file}`)
-      console.error('使用 --format <id> 手动指定格式，或使用 chatlab formats 查看支持的格式列表')
+      console.error(`Unrecognized file format: ${file}`)
+      console.error('Use --format <id> to specify manually, or run "chatlab formats" to see supported formats')
       process.exit(1)
     }
 
-    console.log(`导入文件: ${file}`)
-    if (format) console.log(`  格式: ${format.name} (${format.platform})`)
+    console.log(`Importing: ${file}`)
+    if (format) console.log(`  Format: ${format.name} (${format.platform})`)
 
     try {
       const result = await streamImport(dbManager, file, {
         formatId: options.format,
         nativeBinding,
         onProgress: (p) => {
-          const labels: Record<string, string> = {
-            detecting: '检测格式',
-            parsing: '解析中',
-            saving: '写入数据库',
-            indexing: '建立索引',
-            done: '完成',
-            error: '错误',
-          }
-          process.stdout.write(`\r  ${labels[p.stage] || p.stage}: ${p.progress}%`)
+          process.stdout.write(`\r  ${p.stage}: ${p.progress}%`)
         },
       })
 
@@ -250,47 +237,44 @@ program
         console.log(`  Messages written: ${result.diagnostics?.messagesWritten ?? 0}`)
         console.log(`  Messages skipped: ${result.diagnostics?.messagesSkipped ?? 0}`)
       } else {
-        console.error(`\n\n导入失败: ${result.error}`)
+        console.error(`\n\nImport failed: ${result.error}`)
         process.exit(1)
       }
     } catch (err) {
-      console.error(`\n\n导入错误: ${err instanceof Error ? err.message : err}`)
+      console.error(`\n\nImport error: ${err instanceof Error ? err.message : err}`)
       process.exit(1)
     } finally {
       dbManager.closeAll()
     }
   })
 
-// chatlab formats - 列出支持的格式
 program
   .command('formats')
-  .description('列出所有支持的聊天记录格式')
+  .description('List all supported chat history formats')
   .action(async () => {
     const { getSupportedFormats } = await import('./import')
     const formats = getSupportedFormats()
-    console.log(`支持 ${formats.length} 种格式:\n`)
+    console.log(`${formats.length} supported format(s):\n`)
     for (const f of formats) {
       console.log(`  ${f.id.padEnd(30)} ${f.name} (${f.platform}) [${f.extensions.join(', ')}]`)
     }
   })
 
-// chatlab mcp - MCP Server
 program
   .command('mcp')
-  .description('启动 MCP Server（stdio 传输，供 Claude Desktop / Cursor 等 AI 代理使用）')
+  .description('Start MCP Server (stdio transport, for Claude Desktop / Cursor / AI agents)')
   .action(async () => {
     const { startMcpServer } = await import('./mcp')
     await startMcpServer()
   })
 
-// chatlab serve - 启动 HTTP API 服务
 program
   .command('serve')
-  .description('启动独立 HTTP API 服务')
-  .option('--port <port>', '服务端口', '3110')
-  .option('--host <host>', '监听地址', '127.0.0.1')
-  .option('--token <token>', '自定义 Bearer Token（不指定则从配置文件读取或自动生成）')
-  .option('--web [dir]', '托管 Web 前端静态资源（默认查找 dist-web/）')
+  .description('Start the HTTP API server')
+  .option('--port <port>', 'Server port', '3110')
+  .option('--host <host>', 'Listen address', '127.0.0.1')
+  .option('--token <token>', 'Custom Bearer Token (reads from config or auto-generates if omitted)')
+  .option('--web [dir]', 'Serve Web frontend static assets (defaults to dist-web/)')
   .action(async (options) => {
     const { startHttpServer } = await import('./http')
     const port = parseInt(options.port, 10)
@@ -301,7 +285,7 @@ program
       if (fs.existsSync(webDir)) {
         webRoot = path.resolve(webDir)
       } else {
-        console.warn(`警告: Web 目录不存在: ${webDir}，将仅启动 API 服务`)
+        console.warn(`Warning: Web directory not found: ${webDir}, starting in API-only mode`)
       }
     }
 
@@ -313,18 +297,18 @@ program
         webRoot,
       })
 
-      console.log(`\nChatLab HTTP API 已启动`)
-      console.log(`  地址: http://${info.host}:${info.port}`)
-      console.log(`  Token: ${info.token}`)
+      console.log(`\nChatLab HTTP API started`)
+      console.log(`  Address: http://${info.host}:${info.port}`)
+      console.log(`  Token:   ${info.token}`)
       if (webRoot) {
-        console.log(`  Web UI: http://${info.host}:${info.port}/`)
+        console.log(`  Web UI:  http://${info.host}:${info.port}/`)
       }
-      console.log(`\n示例:`)
+      console.log(`\nExample:`)
       console.log(`  curl -H "Authorization: Bearer ${info.token}" http://${info.host}:${info.port}/api/v1/status`)
-      console.log(`\n按 Ctrl+C 停止服务\n`)
+      console.log(`\nPress Ctrl+C to stop.\n`)
 
       const shutdown = async () => {
-        console.log('\n正在停止服务...')
+        console.log('\nShutting down...')
         const { stopHttpServer } = await import('./http')
         await stopHttpServer()
         process.exit(0)
@@ -335,21 +319,20 @@ program
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err)
       if (message.includes('EADDRINUSE')) {
-        console.error(`错误: 端口 ${port} 已被占用`)
+        console.error(`Error: port ${port} is already in use`)
       } else {
-        console.error(`启动失败: ${message}`)
+        console.error(`Startup failed: ${message}`)
       }
       process.exit(1)
     }
   })
 
-// chatlab web - 一键启动 Web UI
 program
   .command('web')
-  .description('一键启动 Web UI（含 HTTP API 后端 + 自动打开浏览器）')
-  .option('--port <port>', '服务端口', '3110')
-  .option('--host <host>', '监听地址', '127.0.0.1')
-  .option('--no-open', '不自动打开浏览器')
+  .description('Launch Web UI with one click (HTTP API + browser auto-open)')
+  .option('--port <port>', 'Server port', '3110')
+  .option('--host <host>', 'Listen address', '127.0.0.1')
+  .option('--no-open', 'Do not auto-open browser')
   .action(async (options) => {
     const { startHttpServer } = await import('./http')
     const port = parseInt(options.port, 10)
@@ -396,19 +379,18 @@ program
     }
   })
 
-// chatlab config - 配置管理
-const configCmd = program.command('config').description('配置管理')
+const configCmd = program.command('config').description('Configuration management')
 
 configCmd
   .command('path')
-  .description('显示配置文件路径')
+  .description('Show config file path')
   .action(() => {
     console.log(getConfigPath())
   })
 
 configCmd
   .command('show')
-  .description('显示当前配置')
+  .description('Show current configuration')
   .action(() => {
     const config = loadConfig()
     console.log(JSON.stringify(config, null, 2))
@@ -431,8 +413,8 @@ function openBrowser(url: string): void {
 }
 
 /**
- * 查找独立编译的 better-sqlite3 原生模块路径。
- * 在非 Electron 环境下使用，避免与 electron-rebuild 冲突。
+ * Resolve standalone better-sqlite3 native module path.
+ * Used in non-Electron environments to avoid electron-rebuild conflicts.
  */
 function resolveNativeBinding(): string | undefined {
   if (process.versions.electron) return undefined
@@ -452,7 +434,7 @@ function initRuntime() {
 }
 
 function formatTimeRange(first: number | null, last: number | null): string {
-  if (!first || !last) return '未知'
+  if (!first || !last) return 'Unknown'
   const from = new Date(first * 1000).toLocaleDateString()
   const to = new Date(last * 1000).toLocaleDateString()
   return `${from} ~ ${to}`
@@ -483,14 +465,12 @@ function printTable(columns: string[], rows: Record<string, unknown>[]): void {
   }
 }
 
-/**
- * CLI 入口函数
- */
+/** CLI entry function */
 export function run(argv?: string[]): void {
   program.parse(argv)
 }
 
-// 作为脚本直接运行时自动执行
+// Auto-execute when run directly as a script
 const isDirectRun = process.argv[1]?.endsWith('cli.ts') || process.argv[1]?.endsWith('cli.js')
 if (isDirectRun) {
   run()
