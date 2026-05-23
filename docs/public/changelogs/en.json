@@ -1,5 +1,40 @@
 [
   {
+    "version": "0.21.1",
+    "date": "2026-05-23",
+    "summary": "Improve pull sync reliability and data safety, add an option to clean up imported chats when removing subscriptions, and fix UI animation and modal interaction issues.",
+    "changes": [
+      {
+        "type": "feat",
+        "items": [
+          "Auto-generate session index after pull sync",
+          "Add option to delete imported chats when removing a subscription",
+          "【CLI Web】Support per-version screenshots in the changelog modal and make Markdown list fixes opt-in",
+          "【MCP】Add icon and i18n support for the ci change type"
+        ]
+      },
+      {
+        "type": "fix",
+        "items": [
+          "Fix potential data loss on small pages during pull sync and validate retry import results",
+          "Fix session index not auto-generating after pull sync completes",
+          "Fix sidebar session list not refreshing after pull completes or data is deleted",
+          "Fix inability to fetch all sessions when the remote server lacks pagination support",
+          "Improve pull sync retry logic and pagination strategy for better stability",
+          "Fix missing schema check in session existence validation that caused 'no such table' errors",
+          "Fix forced session index modal unexpectedly closing on generation failure",
+          "Fix session index modal blocking the page when sessions are empty",
+          "【Desktop】Fall back to the package.json version when app.getVersion returns 0.0.0",
+          "【CLI Web】Sync icon now spins in-place instead of showing a separate loader"
+        ]
+      },
+      {
+        "type": "docs",
+        "items": ["Update Pull protocol docs to the since+nextSince pagination model"]
+      }
+    ]
+  },
+  {
     "version": "0.21.0",
     "date": "2026-05-22",
     "summary": "This update adds MCP support, unifies multi-platform import and service layers, and improves Web, AI, sync, and release stability.",
